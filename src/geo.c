@@ -824,3 +824,48 @@ void geodistCommand(client *c) {
         addReplyDoubleDistance(c,
             geohashGetDistance(xyxy[0],xyxy[1],xyxy[2],xyxy[3]) / to_meter);
 }
+
+#define GEOHASH_LEN 16
+/*GEOADDPOLYGON key name long0 lat0 long 1 lat 1 [... longN latN] long0 lat0*/
+void geoAddPolygonCommand(client *c) {
+    if ((c->argc - 3) % 2 != 0) {
+        addReplyError(c, "syntax error. Try GEOADDPOLYGON key name [x1] [y1] "
+                         "[x2] [y2] ... [x1] [y1]");
+        return;
+    }
+    int points = (c->argc - 3) / 2;
+    int argc = 4;
+    robj **argv = zcalloc(argc*sizeof(robj*));
+    argv[0] = createRawStringObject("hset", 4);
+    argv[1] = c->argv[1];
+    incrRefCount(argv[1]);
+
+    char polygon[GEOHASH_LEN * points];
+    memset(polygon, '0', GEOHASH_LEN * points);
+    for (int i = 0; i < points; i++) {
+        double xy[2];
+        if (extractLongLatOrReply(c, (c->argv+3)+(i*2),xy) == C_ERR) {
+            for (i = 0; i < argc; i++)
+                if (argv[i]) decrRefCount(argv[i]);
+            zfree(argv);
+            return;
+        }
+        GeoHashBits hash;
+        geohashEncodeWGS84(xy[0], xy[1], GEO_STEP_MAX, &hash);
+        GeoHashFix52Bits bits = geohashAlign52Bits(hash);
+        char buf[GEOHASH_LEN];
+        
+        int len = sdsll2str(buf, bits);
+        for (int j = 0; j < len; j++ ) {
+            polygon[GEOHASH_LEN * (i + 1) - (1 + j)] = buf[j];
+        }
+    }
+    sds sdsPt = sdsnewlen(polygon, GEOHASH_LEN * points);
+    robj *score = createObject(OBJ_STRING, sdsPt);
+    robj *val = c->argv[2];
+    argv[2] = val;
+    argv[3] = score;
+    incrRefCount(val);
+    replaceClientCommandVector(c,argc,argv);
+    hsetCommand(c);
+}

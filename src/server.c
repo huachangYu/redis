@@ -934,6 +934,10 @@ struct redisCommand redisCommandTable[] = {
      "read-only @geo",
      0,NULL,1,1,1,0,0,0},
 
+     {"geoaddpolygon", geoAddPolygonCommand, -11,
+     "write use-memory @geo",
+     0, NULL,1,1,1,0,0,0},
+
     {"pfselftest",pfselftestCommand,1,
      "admin @hyperloglog",
       0,NULL,0,0,0,0,0,0},
