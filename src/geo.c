@@ -826,7 +826,7 @@ void geodistCommand(client *c) {
 }
 
 #define GEOHASH_LEN 16
-/*GEOADDPOLYGON key name long0 lat0 long 1 lat 1 [... longN latN] long0 lat0*/
+/* GEOADDPOLYGON key name long0 lat0 long 1 lat 1 [... longN latN] long0 lat0 */
 void geoAddPolygonCommand(client *c) {
     if ((c->argc - 3) % 2 != 0) {
         addReplyError(c, "syntax error. Try GEOADDPOLYGON key name [x1] [y1] "
@@ -857,7 +857,7 @@ void geoAddPolygonCommand(client *c) {
         
         int len = sdsll2str(buf, bits);
         for (int j = 0; j < len; j++ ) {
-            polygon[GEOHASH_LEN * (i + 1) - (1 + j)] = buf[j];
+            polygon[GEOHASH_LEN * i + j] = buf[j];
         }
     }
     sds sdsPt = sdsnewlen(polygon, GEOHASH_LEN * points);
@@ -868,4 +868,36 @@ void geoAddPolygonCommand(client *c) {
     incrRefCount(val);
     replaceClientCommandVector(c,argc,argv);
     hsetCommand(c);
+}
+
+/* GEOGETPOLYGON key name */
+void geoGetPolygonCommand(client *c) {
+    robj *zobj = lookupKeyRead(c->db, c->argv[1]);
+    unsigned char *vstr = NULL;
+    unsigned int vlen = UINT_MAX;
+    long long vll = LLONG_MAX;
+    sds field = c->argv[2]->ptr;
+    int ret = hashTypeGetFromZiplist(zobj, field, &vstr, &vlen, &vll);
+    if (ret < 0) {
+        addReplyNull(c);
+    } else {
+        int points = vlen / GEOHASH_LEN;
+        addReplyArrayLen(c, points);
+        for (int i = 0; i < points; i++) {
+            uint64_t bits = 0;
+            for (int j = 0; j < GEOHASH_LEN; j++) {
+                bits = 10 * bits + (vstr[GEOHASH_LEN * i + j] - '0');
+            }
+            GeoHashBits hash = {bits, GEO_STEP_MAX};
+            GeoHashFix52Bits geoBits = geohashAlign52Bits(hash);
+            double xy[2];
+            if (!decodeGeohash(geoBits, xy)) {
+                addReplyNullArray(c);
+                continue;
+            }
+            addReplyArrayLen(c, 2);
+            addReplyHumanLongDouble(c, xy[0]);
+            addReplyHumanLongDouble(c, xy[1]);
+        }
+    }
 }
