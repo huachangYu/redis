@@ -2468,6 +2468,7 @@ void geoposCommand(client *c);
 void geodistCommand(client *c);
 void geoAddPolygonCommand(client *c);
 void geoGetPolygonCommand(client *c);
+void geoPointInPolygonCommand(client *c);
 void pfselftestCommand(client *c);
 void pfaddCommand(client *c);
 void pfcountCommand(client *c);

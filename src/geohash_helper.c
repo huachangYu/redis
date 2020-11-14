@@ -233,3 +233,41 @@ int geohashGetDistanceIfInRadiusWGS84(double x1, double y1, double x2,
                                       double *distance) {
     return geohashGetDistanceIfInRadius(x1, y1, x2, y2, radius, distance);
 }
+
+#define max(a, b) (a >= b ? a : b)
+#define min(a, b) (a >= b ? b : a)
+#define GEOHASH_LEN 16
+int pointInPolygon(GeoHashBits pointBits, char *polygonStr, int polygonPointsNum) {
+    double pointXy[2];
+    if (!geohashDecodeToLongLatWGS84(pointBits, pointXy)) {
+        return 0;
+    }
+    double polygon[polygonPointsNum][2];
+    for (int i = 0; i < polygonPointsNum; i++) {
+        uint64_t bits = 0;
+        for (int j = 0; j < GEOHASH_LEN; j++) {
+            bits = 10 * bits + (polygonStr[GEOHASH_LEN * i + j] - '0');
+        }
+        GeoHashBits hash = {bits, GEO_STEP_MAX};
+        if(!geohashDecodeToLongLatWGS84(hash, polygon[i])) {
+            return 0;
+        }
+    }
+
+    /* use ray-crossing method to judge whether the point is in the polygon */
+    int cross = 0;
+    for (int i = 0; i < polygonPointsNum - 1; i++) {
+        double *pt0 = polygon[i];
+        double *pt1 = polygon[i+1];
+        if (pointXy[1] < min(pt0[1], pt1[1]) || 
+            pointXy[1] > max(pt0[1], pt1[1]) || 
+            pt0[1] == pt1[1]) {
+            continue;
+        }
+        double x = ((pt1[0] - pt0[0]) / (pt1[1] - pt0[1])) * (pointXy[1] - pt0[1]) + pt0[0];
+        if (x > pointXy[0]) {
+            cross++;
+        }
+    }
+    return cross % 2 == 1 ? 1 : 0;
+}

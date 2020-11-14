@@ -841,7 +841,6 @@ void geoAddPolygonCommand(client *c) {
     incrRefCount(argv[1]);
 
     char polygon[GEOHASH_LEN * points];
-    memset(polygon, '0', GEOHASH_LEN * points);
     for (int i = 0; i < points; i++) {
         double xy[2];
         if (extractLongLatOrReply(c, (c->argv+3)+(i*2),xy) == C_ERR) {
@@ -873,6 +872,10 @@ void geoAddPolygonCommand(client *c) {
 /* GEOGETPOLYGON key name */
 void geoGetPolygonCommand(client *c) {
     robj *zobj = lookupKeyRead(c->db, c->argv[1]);
+    if (zobj == NULL) {
+        addReplyNull(c);
+        return;
+    }
     unsigned char *vstr = NULL;
     unsigned int vlen = UINT_MAX;
     long long vll = LLONG_MAX;
@@ -899,5 +902,38 @@ void geoGetPolygonCommand(client *c) {
             addReplyHumanLongDouble(c, xy[0]);
             addReplyHumanLongDouble(c, xy[1]);
         }
+    }
+}
+
+/* GEOPOINTINPOLYGON keyPoint namePoint keyPolygon name polygon */
+void geoPointInPolygonCommand(client *c) {
+    robj *ptObj = lookupKeyRead(c->db, c->argv[1]);
+    if (ptObj == NULL) {
+        addReplyNull(c);
+        return;
+    }
+    double score;
+    if (zsetScore(ptObj, c->argv[2]->ptr, &score) == C_ERR) {
+        addReplyNull(c);
+        return;
+    }
+    GeoHashBits pointHash = {score, GEO_STEP_MAX};
+
+    robj *polygonObj = lookupKeyRead(c->db, c->argv[3]);
+    if (polygonObj == NULL) {
+        addReplyNull(c);
+        return;
+    }
+    unsigned char *vstr = NULL;
+    unsigned int vlen = UINT_MAX;
+    long long vll = LLONG_MAX;
+    if(hashTypeGetFromZiplist(polygonObj, c->argv[4]->ptr, &vstr, &vlen, &vll) < 0) {
+        addReplyNull(c);
+        return;
+    }
+    if (pointInPolygon(pointHash, vstr, vlen / GEOHASH_LEN)) {
+        addReplyBool(c, 1);
+    } else {
+        addReplyBool(c, 0);
     }
 }
