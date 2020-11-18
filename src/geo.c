@@ -841,6 +841,22 @@ void geoAddPolygonCommand(client *c) {
     incrRefCount(argv[1]);
 
     char polygon[GEOHASH_LEN * points];
+
+    // TODO: check whether it is a polygon
+    const double eps = 1e-6;
+    double xy0[2], xyp[2];
+    if(extractLongLatOrReply(c, c->argv+3, xy0) == C_ERR ||
+        extractLongLatOrReply(c, c->argv+3 + (points - 1)*2, xyp) ==C_ERR) {
+        for (int i = 0; i < argc; i++)
+            if (argv[i]) decrRefCount(argv[i]);
+        zfree(argv);
+        return;
+    }
+    if (abs(xy0[0] - xyp[0]) > eps || abs(xy0[1] - xyp[1]) > eps) {
+        addReplyError(c, "syntax error. First point must be same as the last point.");
+        return;
+    }
+    
     for (int i = 0; i < points; i++) {
         double xy[2];
         if (extractLongLatOrReply(c, (c->argv+3)+(i*2),xy) == C_ERR) {
