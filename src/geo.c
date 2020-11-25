@@ -826,40 +826,13 @@ void geodistCommand(client *c) {
 }
 
 #define GEOHASH_LEN 16
-/* GEOADDPOLYGON key name long0 lat0 long 1 lat 1 [... longN latN] long0 lat0 */
-void geoAddPolygonCommand(client *c) {
-    if ((c->argc - 3) % 2 != 0) {
-        addReplyError(c, "syntax error. Try GEOADDPOLYGON key name [x1] [y1] "
-                         "[x2] [y2] ... [x1] [y1]");
-        return;
-    }
-    int points = (c->argc - 3) / 2;
-    int argc = 4;
-    robj **argv = zcalloc(argc*sizeof(robj*));
-    argv[0] = createRawStringObject("hset", 4);
-    argv[1] = c->argv[1];
-    incrRefCount(argv[1]);
-
-    char polygon[GEOHASH_LEN * points];
-
-    // TODO: check whether it is a polygon
-    const double eps = 1e-6;
-    double xy0[2], xyp[2];
-    if(extractLongLatOrReply(c, c->argv+3, xy0) == C_ERR ||
-        extractLongLatOrReply(c, c->argv+3 + (points - 1)*2, xyp) ==C_ERR) {
-        for (int i = 0; i < argc; i++)
-            if (argv[i]) decrRefCount(argv[i]);
-        zfree(argv);
-        return;
-    }
-    if (abs(xy0[0] - xyp[0]) > eps || abs(xy0[1] - xyp[1]) > eps) {
-        addReplyError(c, "syntax error. First point must be same as the last point.");
-        return;
-    }
-    
-    for (int i = 0; i < points; i++) {
+#define EPS 1e-6
+void geoAddPoints(client *c, robj **argv, int argc) {
+    int pointsNum = (c->argc - 3) / 2;
+    char points[GEOHASH_LEN * pointsNum];
+    for (int i = 0; i < pointsNum; i++) {
         double xy[2];
-        if (extractLongLatOrReply(c, (c->argv+3)+(i*2),xy) == C_ERR) {
+        if (extractLongLatOrReply(c, (c->argv + 3) + (i * 2), xy) == C_ERR) {
             for (i = 0; i < argc; i++)
                 if (argv[i]) decrRefCount(argv[i]);
             zfree(argv);
@@ -869,24 +842,23 @@ void geoAddPolygonCommand(client *c) {
         geohashEncodeWGS84(xy[0], xy[1], GEO_STEP_MAX, &hash);
         GeoHashFix52Bits bits = geohashAlign52Bits(hash);
         char buf[GEOHASH_LEN];
-        
+
         int len = sdsll2str(buf, bits);
-        for (int j = 0; j < len; j++ ) {
-            polygon[GEOHASH_LEN * i + j] = buf[j];
+        for (int j = 0; j < len; j++) {
+            points[GEOHASH_LEN * i + j] = buf[j];
         }
     }
-    sds sdsPt = sdsnewlen(polygon, GEOHASH_LEN * points);
+    sds sdsPt = sdsnewlen(points, GEOHASH_LEN * pointsNum);
     robj *score = createObject(OBJ_STRING, sdsPt);
     robj *val = c->argv[2];
     argv[2] = val;
     argv[3] = score;
     incrRefCount(val);
-    replaceClientCommandVector(c,argc,argv);
+    replaceClientCommandVector(c, argc, argv);
     hsetCommand(c);
 }
 
-/* GEOGETPOLYGON key name */
-void geoGetPolygonCommand(client *c) {
+void geoGetPoints(client *c) {
     robj *zobj = lookupKeyRead(c->db, c->argv[1]);
     if (zobj == NULL) {
         addReplyNull(c);
@@ -919,6 +891,62 @@ void geoGetPolygonCommand(client *c) {
             addReplyHumanLongDouble(c, xy[1]);
         }
     }
+}
+
+/* GEOADDPOLYLINE key name long0 lat0 long 1 lat 1 [... longN latN]*/
+void geoAddPolylineCommand(client *c) {
+    if ((c->argc - 3) % 2 != 0) {
+        addReplyError(c, "syntax error. Try GEOADDPOLYLINE key name [x1] [y1] "
+                         "[x2] [y2] ... [xn] [yn]");
+        return;
+    }
+    int pointsNum = (c->argc - 3) / 2;
+    int argc = 4;
+    robj **argv = zcalloc(argc*sizeof(robj*));
+    argv[0] = createRawStringObject("hset", 4);
+    argv[1] = c->argv[1];
+    incrRefCount(argv[1]);
+    geoAddPoints(c, argv, argc);
+}
+
+/* GEOGETPOLYLINE key name*/
+void geoGetPolylineCommand(client *c) {
+    geoGetPoints(c);
+}
+
+/* GEOADDPOLYGON key name long0 lat0 long 1 lat 1 [... longN latN] long0 lat0 */
+void geoAddPolygonCommand(client *c) {
+    if ((c->argc - 3) % 2 != 0) {
+        addReplyError(c, "syntax error. Try GEOADDPOLYGON key name [x1] [y1] "
+                         "[x2] [y2] ... [x1] [y1]");
+        return;
+    }
+    int pointsNum = (c->argc - 3) / 2;
+    int argc = 4;
+    robj **argv = zcalloc(argc*sizeof(robj*));
+    argv[0] = createRawStringObject("hset", 4);
+    argv[1] = c->argv[1];
+    incrRefCount(argv[1]);
+
+    // TODO: check whether it is a polygon
+    double xy0[2], xyp[2];
+    if(extractLongLatOrReply(c, c->argv+3, xy0) == C_ERR ||
+        extractLongLatOrReply(c, c->argv+3 + (pointsNum - 1)*2, xyp) == C_ERR) {
+        for (int i = 0; i < argc; i++)
+            if (argv[i]) decrRefCount(argv[i]);
+        zfree(argv);
+        return;
+    }
+    if (abs(xy0[0] - xyp[0]) > EPS || abs(xy0[1] - xyp[1]) > EPS) {
+        addReplyError(c, "syntax error. First point must be same as the last point.");
+        return;
+    }
+    geoAddPoints(c, argv, argc);
+}
+
+/* GEOGETPOLYGON key name */
+void geoGetPolygonCommand(client *c) {
+    geoGetPoints(c);
 }
 
 /* GEOPOINTINPOLYGON keyPoint namePoint keyPolygon name polygon */
