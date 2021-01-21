@@ -29,6 +29,7 @@
  */
 
 #include "geo.h"
+#include "geohash.h"
 #include "geohash_helper.h"
 #include "debugmacro.h"
 
@@ -949,19 +950,26 @@ void geoGetPolygonCommand(client *c) {
     geoGetPoints(c);
 }
 
-/* GEOPOINTINPOLYGON keyPoint namePoint keyPolygon name polygon */
-void geoPointInPolygonCommand(client *c) {
-    robj *ptObj = lookupKeyRead(c->db, c->argv[1]);
+GeoHashBits *getGeoHashBits(client *c, int keyInd, int nameInd) {
+    robj *ptObj = lookupKeyRead(c->db, c->argv[keyInd]);
     if (ptObj == NULL) {
         addReplyNull(c);
-        return;
+        return NULL;
     }
     double score;
-    if (zsetScore(ptObj, c->argv[2]->ptr, &score) == C_ERR) {
+    if (zsetScore(ptObj, c->argv[nameInd]->ptr, &score) == C_ERR) {
         addReplyNull(c);
-        return;
+        return NULL;
     }
-    GeoHashBits pointHash = {score, GEO_STEP_MAX};
+    GeoHashBits *pointHash = zmalloc(sizeof(*pointHash));
+    pointHash->bits = score;
+    pointHash->step = GEO_STEP_MAX;
+    return pointHash;
+}
+
+/* GEOPOINTINPOLYGON keyPoint namePoint keyPolygon name polygon */
+void geoPointInPolygonCommand(client *c) {
+    GeoHashBits *pointHash = getGeoHashBits(c, 1, 2);
 
     robj *polygonObj = lookupKeyRead(c->db, c->argv[3]);
     if (polygonObj == NULL) {
@@ -980,4 +988,24 @@ void geoPointInPolygonCommand(client *c) {
     } else {
         addReplyBool(c, 0);
     }
+}
+
+/* GEODISTANCEPOINTPOLYLINE keyPoint namePoint keyPolyline name polyline*/
+void geoDistancePointPolylineCommand(client *c) {
+    GeoHashBits *pointHash = getGeoHashBits(c, 1, 2);
+
+    robj *polygonObj = lookupKeyRead(c->db, c->argv[3]);
+    if (polygonObj == NULL) {
+        addReplyNull(c);
+        return;
+    }
+    unsigned char *vstr = NULL;
+    unsigned int vlen = UINT_MAX;
+    long long vll = LLONG_MAX;
+    if(hashTypeGetFromZiplist(polygonObj, c->argv[4]->ptr, &vstr, &vlen, &vll) < 0) {
+        addReplyNull(c);
+        return;
+    }
+    double distance = distancePointPolyline(pointHash, vstr, vlen / GEOHASH_LEN);
+    addReplyDouble(c, distance);
 }

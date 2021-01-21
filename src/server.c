@@ -946,7 +946,11 @@ struct redisCommand redisCommandTable[] = {
      "read-only @geo",
      0, NULL,1,1,1,0,0,0},
 
-     {"geogetpolyline", geoGetPolygonCommand, -2,
+     {"geogetpolyline", geoGetPolygonCommand, -7,
+     "read-only @geo",
+     0, NULL,1,1,1,0,0,0},
+
+     {"geodistancepointpolyline", geoDistancePointPolylineCommand, -5,
      "read-only @geo",
      0, NULL,1,1,1,0,0,0},
 

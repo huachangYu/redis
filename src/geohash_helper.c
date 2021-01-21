@@ -237,28 +237,35 @@ int geohashGetDistanceIfInRadiusWGS84(double x1, double y1, double x2,
 #define max(a, b) (a >= b ? a : b)
 #define min(a, b) (a >= b ? b : a)
 #define GEOHASH_LEN 16
-int pointInPolygon(GeoHashBits pointBits, char *polygonStr, int polygonPointsNum) {
-    double pointXy[2];
-    if (!geohashDecodeToLongLatWGS84(pointBits, pointXy)) {
-        return 0;
-    }
-    double polygon[polygonPointsNum][2];
-    for (int i = 0; i < polygonPointsNum; i++) {
+
+int decodeGeoPoints(double xys[][2], char *pointsStr, int pointsNum) {
+    for (int i = 0; i < pointsNum; i++) {
         uint64_t bits = 0;
         for (int j = 0; j < GEOHASH_LEN; j++) {
-            bits = 10 * bits + (polygonStr[GEOHASH_LEN * i + j] - '0');
+            bits = 10 * bits + (pointsStr[GEOHASH_LEN * i + j] - '0');
         }
         GeoHashBits hash = {bits, GEO_STEP_MAX};
-        if(!geohashDecodeToLongLatWGS84(hash, polygon[i])) {
+        if(!geohashDecodeToLongLatWGS84(hash, xys[i])) {
             return 0;
         }
     }
+    return 1;
+}
 
+int pointInPolygon(GeoHashBits *pointBits, char *polygonStr, int polygonPointsNum) {
+    double pointXy[2];
+    if (!geohashDecodeToLongLatWGS84(*pointBits, pointXy)) {
+        return 0;
+    }
+    double polygonXys[polygonPointsNum][2];
+    if (decodeGeoPoints(polygonXys, polygonStr, polygonPointsNum) == 0) {
+        return 0;
+    }
     /* use ray-crossing method to judge whether the point is in the polygon */
     int cross = 0;
     for (int i = 0; i < polygonPointsNum - 1; i++) {
-        double *pt0 = polygon[i];
-        double *pt1 = polygon[i+1];
+        double *pt0 = polygonXys[i];
+        double *pt1 = polygonXys[i+1];
         if (pointXy[1] < min(pt0[1], pt1[1]) || 
             pointXy[1] > max(pt0[1], pt1[1]) || 
             pt0[1] == pt1[1]) {
@@ -270,4 +277,30 @@ int pointInPolygon(GeoHashBits pointBits, char *polygonStr, int polygonPointsNum
         }
     }
     return cross % 2 == 1 ? 1 : 0;
+}
+
+double distancePointPolyline(GeoHashBits *pointBits, char *polylineStr, int polylinePointsNum) {
+    double pointXy[2];
+    if (!geohashDecodeToLongLatWGS84(*pointBits, pointXy)) {
+        return 0;
+    }
+    double polylineXys[polylinePointsNum][2];
+    if (decodeGeoPoints(polylineXys, polylineStr, polylinePointsNum) == 0) {
+        return 0;
+    }
+    double distance = geohashGetDistance(pointXy[0], pointXy[1], polylineXys[0][0], polylineXys[0][1]);
+    for (int i = 0; i < polylinePointsNum - 1; i++) {
+        double a = geohashGetDistance(polylineXys[i][0], polylineXys[i][1], polylineXys[i + 1][0], polylineXys[i + 1][1]);
+        double c = geohashGetDistance(pointXy[0], pointXy[1], polylineXys[i][0], polylineXys[i][1]);
+        double b = geohashGetDistance(pointXy[0], pointXy[1], polylineXys[i + 1][0], polylineXys[i + 1][1]);
+        if (b * b >= c * c + a * a) distance = min(distance, c);
+        else if (c * c >= b * b + a * a) distance = min(distance, b);
+        else {
+            double ave = (a + b + c) / 2;
+            double s = sqrt(ave * (ave - a) * (ave -b) * (ave - c));
+            distance = min(distance, 2 * s / a);
+        }
+
+    }
+    return distance;
 }

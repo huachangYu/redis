@@ -2470,6 +2470,7 @@ void geoAddPolygonCommand(client *c);
 void geoAddPolylineCommand(client *c);
 void geoGetPolygonCommand(client *c);
 void geoGetPolylineCommand(client *c);
+void geoDistancePointPolylineCommand(client *c);
 void geoPointInPolygonCommand(client *c);
 void pfselftestCommand(client *c);
 void pfaddCommand(client *c);
